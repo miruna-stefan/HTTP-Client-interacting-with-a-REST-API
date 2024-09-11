@@ -1,0 +1,150 @@
+STEFAN MIRUNA ANDREEA 324CA
+
+HOMEWORK 4 (Web Client. Communication with REST API)
+
+In order to get a starting point for doing this homework, I have used the 
+framework from the 9th lab, meaning that I have taken the buffer.cpp, 
+buffer.hpp, helpers.cpp, helpers.hpp, request.cpp and requests.hpp files from 
+the 9th lab, to which I have made a few adjustments for the homwork. For 
+instance, in the requests.cpp file, I have added the token parameter to 
+compute_get_request() and to compute_post_request() and i have also added
+implementation for a new function: compute_delete_request(). Also, in the 
+helpers.hpp file, i have added the DIE macro for error handling.
+
+Starting the logic with the int main() function, as this is the entry point to 
+the program, I have allocated memory for a char ** cookies, although we will 
+work with only one cookie, because this was the format of the cookies parameter
+of the request functions in the lab. Therefore, we will only have one char * 
+element in cookies, so we will only work with cookies[0].
+We will also keep a login_flag, indicating if any user is logged in or not.
+
+We will continue reading commands from stdin and calling the corresponding 
+functions until meeting the "exit" command.
+
+If the command that we have received is "register", we need to call the 
+handle_register_command() function. First of all, this function will call the
+handle_command_with_credentials() function, that is responsible for processing
+the username and password parameters of the commands that require credentials 
+verifications (namely register and login). Here, we give prompts for username 
+and password, we read them as strings (we read the whole line, no matter if we 
+meet any spaces), we check their validity (they must not contain space 
+characters) and then convert them into char * because it is more confortable 
+for me to work with them like that. Then, we add the username and the password 
+fields in the json node body_data. In order to efficiently work with jsons, I 
+chose the nlohmann/json library because it provides some functionalities that 
+make transitions from json to string and viceversa very easy. For instance, the
+.dump() function from the nlohmann library can be used to serialize a json 
+object into a string. After populating the username and password fields in the 
+json body_data, we need to transform this json object into a char **, because 
+this is the parameter format of the requests functions taken from the lab, 
+although we are going to handle only one char * body data, not more. Therefore,
+in the transform_json_into_char_double_pointer() function, we allocate memory 
+for a whole char ** body_data_char, but only populate body_data_char[0]. This 
+will contain the equivalent of the body_data json in char * format. To do this 
+convertion, we will use the .dump() function from the nlohmann library, that 
+will covert the json into a string and then we will apply the .c_str() function
+on the resulted string to convert it into a char*. Now that we have the correct
+char ** type body_data_char (the result of the 
+transform_json_into_char_double_pointer() function), we can use it as parameter
+when calling the compute_post_request() function. The message returned by this 
+function will be sent to server and the handle_command_with_credentials() 
+function will return the response received from server. Moving again into the 
+handle_register_command() function, after checking if the response is NULL 
+(meaning that during the verifications of the username or password performed
+in the handle_command_with_credentials() function, we have found something 
+invalid), we are going to process the response. We will store the last line of
+the response in the char * last_line, because this line is the one indicating 
+if the operation was successful or if we have encountered an error. So, if this
+line is the string "ok", it means that our operation was successful, otherwise 
+it was unsuccessful. In the last case, the line will have the format of a json 
+node: {"error": "error_message"}. In order to print an error message with the 
+format ERROR: error_message, I will call the print_error_message() function. 
+This function uses the get_second_member_from_json_node() to get only the error
+message from {"error": "error_message"} (basically the second member of the 
+json-like string which is the last line of the response). Then it will add the
+word "ERROR" before the error_message and print it. Before finishing the 
+handle_register_command() function, we need to close the connection with the 
+socket. (We will need to do this after every command.)
+
+Handling the "login" command is very similar to the the "register" one, as both
+of them use the logic of the handle_command_with_credentials() function. The 
+only difference here is that after receiveng the response from server, in the 
+handle_login_response() function, we need to make an extra check at the 
+beginning to see if we already have any user logged in or not. The function can
+continue only if there is nobody logged in. Otherwise, we will display an error
+message and return from this function. Furthermore, in case of a successful 
+login operation, we need to update the login_flag and the cookie. In order to 
+get the cookie for the user that has just logged in, we need to parse the 
+response from server and take only the string between the "connect.sid=" and 
+the ";" strings. Then, we need to place this char * cookie on the first (and 
+only) position of the char ** cookies.
+
+For the enter_library command, we need to call the handle_entry_library_command
+function, that first makes 2 checks: if there is any user logged in and if the 
+user has already entered the library. If both checks are ok, we repeat the same
+logic with getting the message from the compute_get_request() function, sending
+it to the server and then handling the response from server with the help of 
+the handle_entry_library_response() function. This function checks if the 
+command was successful and if so, again we only analyze the last line of the 
+response, which will have a similar format to the error case, but instead of 
+error we will have the token for the access to the library: 
+{"token": "actual_token"}. Therefore, we can use the 
+get_second_member_from_json_node() again to get just the actual_token, that 
+will be returned by the handle_entry_library_response() function and then will 
+be used in the handle_entry_library_command() function to update the "global" 
+token.
+
+If we encounter a "logout" command, first we check if there is any user logged 
+in and if it is, we follow the logic that we have just got used to: send to 
+server the message returned by the compute_get_request() function, receive the 
+response from server and handle it using the handle_logout_response() function.
+In this function, we will check the status of the operation (success or error)
+and in case of success we will reset the login_flag and the token, otherwise we
+will print an error message.
+
+If the command that we have received is "get_books", we call the 
+handle_get_books_command() function, that, after checking if there is any user 
+logged in and if the user has entered the library, we need to send the message
+to server and to handle the received response via the 
+handle_get_books_response() function, that again takes into consideration only 
+the last line of the reponse, where we will either have an error message or a 
+json_list-like string containing the short info (id and title) for each book in
+the library. We need to display this list as list of json nodes, not as string,
+so we use the parse(last_line).dump(4) function from the nlohmann/json library,
+that parses the string and turns it into a json list format with the 
+indentation level of 4.
+
+When trying to add a new book to the library, we call the 
+handle_add_book_command(), that, after performing some sanity checks, parses 
+the input from user for each field about the book: title, author, genre, 
+publisher and page_count. We read them as strings (we read the whole line, no 
+matter if any space occur) and then transform them into char *. We do not 
+forget to check that the page count is actually a number (i have designed the 
+is_number() function exactly for this). Then, we populate the fields of the 
+json body_data with the char pointers that we have just received from stdin. 
+Similarly to the register command, we need to convert this json into a char **
+and use it as parameter in the compute_post_request() function. After that, 
+the process is similar to the other commands. Note: the token will be destroyed
+during the process. That's why I have made a copy of the token at the beginning
+of this function, so that at the end I can restore the token.
+
+For the get_book command, the process is quite similar: 2 checks at the 
+beginning of the handle_get_book_command() function, copy the token in order to
+restore it at the end of the function, now we have something new: we need to 
+read the book id from stdin and check if it contains only digits (this is all 
+done in the read_and_verify_validity_book_id() function, then we have to create
+the url for get_book by calling the function get_url_book(), that just 
+concatenates the book id to the URL_GET_BOOKS, then we repeat the whole process 
+with sending the compute_get_request() message to server and handling the 
+response.
+
+If the command that we have received is "delete_book", we call the 
+handle_delete_book_command() function that is identical to the 
+handle_get_book_command() until the point where we call the 
+compute_delete_request() function here instead of compute_get_request() as in
+handle_get_book_command(). Besides that, the whole flow is identical.
+
+If we receive the exit command, we just need to close connection with the 
+server and break from the loop. This will lead to ending the program.
+
+If the command is none of the above, we must give an error message.
